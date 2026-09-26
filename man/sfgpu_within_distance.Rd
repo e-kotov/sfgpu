@@ -66,13 +66,18 @@ invalid.
 
 Membership is decided on the represented binary64 coordinates by the inclusive
 CPU double-precision predicate \code{hypot(dx, dy) <= dist}. CUDA and Metal
-generate candidates using conservative rectangular coordinate bounds, then the
-host applies that final predicate before returning indices. The CPU backend
-sorts and indexes the \code{y} points by x coordinate to prune candidates
-before applying the same predicate, with work proportional to the index build
-and candidates examined. CUDA and Metal candidate scans can still
-examine \code{nrow(x) * nrow(y)} pairs, though they do not create the dense
-distance matrix. No speed advantage is guaranteed.
+generate conservative rectangular candidates, then the host applies that final
+predicate before returning indices. When the sorted \code{y} index and bounded
+query/task/output workspace fit \code{tile_bytes}, CUDA sorts the points on the
+host, transfers coordinates and original indices to the device, binary-searches
+x-coordinate ranges, filters by y coordinate, and compacts candidates. If the
+index workspace does not fit, CUDA uses a bounded tiled GPU rectangle scan; a
+49-byte tile selects this scan path. Metal continues to use the bounded tiled
+GPU scan. The CPU backend sorts and indexes the \code{y} points by x coordinate
+to prune candidates before applying the same predicate. The tiled GPU scan can
+examine \code{nrow(x) * nrow(y)} pairs, though it does not create the dense
+distance matrix. CUDA, Metal, and CPU have workload-dependent costs; no speed
+advantage is guaranteed, and CPU remains the default.
 }
 \examples{
 x <- rbind(c(0, 0), c(3, 4))

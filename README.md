@@ -117,6 +117,17 @@ if the cap would be exceeded, before returning a partial result. The radius
 operation's `tile_bytes` budget includes its candidate inputs, output, and
 scratch; 49 bytes is the minimum for one pair.
 
+For CUDA radius calls, when the sorted `y` index and bounded query/task/output
+workspace fit `tile_bytes`, sfgpu sorts `y` on the host, transfers the sorted
+coordinates and original row indices to the device, binary-searches x-coordinate
+ranges for each query, and compacts the remaining rectangular candidates. The
+host still applies the final inclusive Euclidean predicate. If the full index
+workspace does not fit, CUDA uses its bounded tiled GPU scan instead; a 49-byte
+tile selects that path. Metal continues to use the bounded tiled GPU scan. The
+CPU backend uses its own sorted-y index and remains the default. This dispatch
+does not promise a speed advantage for CUDA; results depend on the data, output
+density, device, and tile budget.
+
 ```r
 sfgpu_distance(x, y, max_output_bytes = 1024, tile_bytes = 40)
 ```
@@ -134,14 +145,14 @@ command duration; no physical-Mac speedup has been established.
 
 For `sfgpu_within_distance()`, every backend makes the final membership test
 with CPU double-precision `hypot(dx, dy) <= dist` on the represented binary64
-coordinates. CUDA and Metal generate candidates from conservative rectangular
-coordinate bounds; the host applies the final hypot test before returning each
-index. The CPU backend sorts and indexes the `y` points by x coordinate to
-prune candidates before applying the same test, with work proportional to the
-index build and the candidates examined. CUDA and Metal's tiled candidate
-scans can still inspect O(nrow(x) * nrow(y)) pairs, although they never
-construct the dense distance matrix. The two operations make no speed
-guarantee or automatic backend choice.
+coordinates. CUDA's indexed path binary-searches x-coordinate ranges on a
+device-side sorted-y index, filters by the y-coordinate bound, and compacts
+candidates before the host applies the final hypot test. If the index workspace
+does not fit the tile budget, CUDA uses a bounded full GPU rectangle scan; that
+path can inspect O(nrow(x) * nrow(y)) pairs. Metal also uses the bounded full
+GPU rectangle scan. The CPU backend sorts and indexes the `y` points by x
+coordinate to prune candidates before applying the same predicate. None of
+these paths carries a speed guarantee or automatic backend choice.
 
 Comparisons use the represented binary64 coordinates; precision already lost
 when coordinates were created cannot be recovered. For dense distances,
