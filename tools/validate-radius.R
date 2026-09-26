@@ -62,9 +62,6 @@ over <- tryCatch(sfgpu_within_distance(sx, sy, 1, backend = backend,
                                         max_output_bytes = 11), error = identity)
 stopifnot(inherits(over, "error"), grepl("max_output_bytes", conditionMessage(over)))
 
-cat(sprintf("SFGPU_RADIUS_HOLDOUT=PASS comparisons=%d device=%s\n",
-            comparisons, sfgpu_backends()[[backend]]$device))
-
 # A rounded subtraction can include a point outside the exact-real interval.
 # This case fails if the broadphase omits radius widening.
 stopifnot(identical(sfgpu_within_distance(rbind(c(-1, 0)),
@@ -80,3 +77,5 @@ for (radius in c(0, 1, 2, 5)) {
     stop("RADIUS_MEMBERSHIP_MISMATCH")
 }
 cat("RADIUS_ANALYTIC_BOUNDARY_PASS\n")
+cat(sprintf("SFGPU_RADIUS_HOLDOUT=PASS comparisons=%d device=%s\n",
+            comparisons, sfgpu_backends()[[backend]]$device))
