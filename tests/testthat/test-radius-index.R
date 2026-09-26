@@ -56,66 +56,114 @@ test_that("indexed bounds retain cancellation and inclusive radius edges", {
   }
 })
 
-if (isTRUE(sfgpu_backends()$cuda$available)) {
-  test_that("CUDA selects indexed or bounded tiled execution from its budget", {
-    x <- matrix(c(0, 0), nrow = 1L)
-    y <- matrix(c(3, 4), nrow = 1L)
+test_that("indexed bounds preserve signed zero and extreme coordinates", {
+  signed_x <- rbind(c(0, 0), c(-0.0, 0))
+  signed_y <- rbind(c(-0.0, 0), c(0, -0.0))
+  largest <- .Machine$double.xmax
+  positive_x <- matrix(c(largest, 0), nrow = 1L)
+  negative_x <- matrix(c(-largest, 0), nrow = 1L)
+  extreme_y <- rbind(c(largest, 0), c(0, 0), c(-largest, 0))
 
-    expect_identical(sfgpu_within_distance(x, y, dist = 5,
-                                           backend = "cuda"), list(1L))
-    stats <- .Call(get("C_sfgpu_cuda_radius_stats", asNamespace("sfgpu")))
-    expect_gt(stats$indexed_waves, 0)
-    expect_identical(stats$tiled_tiles, 0)
+  for (backend in contract_backends()) {
+    expect_identical(sfgpu_within_distance(signed_x, signed_y, 0,
+                                           backend = backend),
+                     list(1:2, 1:2))
+    expect_identical(sfgpu_within_distance(positive_x, extreme_y, largest,
+                                           backend = backend), list(1:2))
+    expect_identical(sfgpu_within_distance(negative_x, extreme_y, largest,
+                                           backend = backend), list(2:3))
+  }
+})
 
-    expect_identical(sfgpu_within_distance(x, y, dist = 5,
-                                           backend = "cuda",
-                                           tile_bytes = 49), list(1L))
-    stats <- .Call(get("C_sfgpu_cuda_radius_stats", asNamespace("sfgpu")))
-    expect_gt(stats$tiled_tiles, 0)
-    expect_identical(stats$indexed_waves, 0)
-  })
+radius_index_gpus <- intersect(
+  c("cuda", "metal"),
+  names(sfgpu_backends())[vapply(sfgpu_backends(), function(info) {
+    isTRUE(info$available)
+  }, logical(1L))]
+)
 
-  test_that("CUDA indexed query batches restore shuffled original y ids", {
-    n <- 4097L
-    points <- cbind(seq_len(n), seq_len(n) %% 31L)
-    permutation <- rev(seq_len(n))
-    y <- points[permutation, , drop = FALSE]
-    expected <- lapply(seq_len(n), function(i) as.integer(match(i, permutation)))
+radius_index_path_stats <- function(backend) {
+  symbol <- switch(backend,
+                   cuda = "C_sfgpu_cuda_radius_stats",
+                   metal = "C_sfgpu_metal_radius_stats")
+  .Call(get(symbol, asNamespace("sfgpu")))
+}
 
-    actual <- sfgpu_within_distance(points, y, dist = 0, backend = "cuda",
-                                    max_output_bytes = 8 * n + 4 * n)
-    expect_identical(actual, expected)
-    stats <- .Call(get("C_sfgpu_cuda_radius_stats", asNamespace("sfgpu")))
-    expect_gt(stats$indexed_waves, 0)
-    expect_identical(stats$tiled_tiles, 0)
-  })
+for (radius_index_backend in radius_index_gpus) {
+  local({
+    backend <- radius_index_backend
 
-  test_that("CUDA indexed all-match output crosses a compaction wave", {
-    nx <- 1025L
-    ny <- 1024L
-    # Every query has every y point in range. The pair count is one task wave
-    # plus 1,024 tasks, so the final wave is partial.
-    x <- matrix(0, nrow = nx, ncol = 2L)
-    y <- matrix(0, nrow = ny, ncol = 2L)
-    output_bytes <- 8 * nx + 4 * nx * ny
+    test_that(sprintf("%s selects indexed or bounded tiled execution by budget",
+                      backend), {
+      x <- matrix(c(0, 0), nrow = 1L)
+      y <- matrix(c(3, 4), nrow = 1L)
 
-    actual <- sfgpu_within_distance(x, y, dist = 0, backend = "cuda",
-                                   max_output_bytes = output_bytes)
-    expect_length(actual, nx)
-    expect_true(all(vapply(actual, function(row) {
-      length(row) == ny && identical(row, seq_len(ny))
-    }, logical(1L))))
+      expect_identical(sfgpu_within_distance(x, y, dist = 5,
+                                             backend = backend), list(1L))
+      stats <- radius_index_path_stats(backend)
+      expect_gt(stats$indexed_waves, 0)
+      expect_identical(stats$tiled_tiles, 0)
 
-    stats <- .Call(get("C_sfgpu_radius_stats", asNamespace("sfgpu")))
-    expect_identical(stats$total_pairs, as.double(nx) * ny)
-    expect_identical(stats$candidate_pairs, as.double(nx) * ny)
-    expect_identical(stats$accepted_pairs, as.double(nx) * ny)
-    dispatch <- .Call(get("C_sfgpu_cuda_radius_stats", asNamespace("sfgpu")))
-    expect_gte(dispatch$indexed_waves, 2)
-    expect_identical(dispatch$tiled_tiles, 0)
+      expect_identical(sfgpu_within_distance(x, y, dist = 5,
+                                             backend = backend,
+                                             tile_bytes = 49), list(1L))
+      stats <- radius_index_path_stats(backend)
+      expect_gt(stats$tiled_tiles, 0)
+      expect_identical(stats$indexed_waves, 0)
+    })
 
-    expect_error(sfgpu_within_distance(
-      x, y, dist = 0, backend = "cuda", max_output_bytes = output_bytes - 1
-    ), "max_output_bytes")
+    test_that(sprintf("%s indexed query batches restore shuffled original y ids",
+                      backend), {
+      n <- 4097L
+      points <- cbind(seq_len(n), seq_len(n) %% 31L)
+      permutation <- rev(seq_len(n))
+      y <- points[permutation, , drop = FALSE]
+      expected <- lapply(seq_len(n), function(i) {
+        as.integer(match(i, permutation))
+      })
+
+      actual <- sfgpu_within_distance(points, y, dist = 0, backend = backend,
+                                      max_output_bytes = 8 * n + 4 * n)
+      expect_identical(actual, expected)
+      stats <- radius_index_path_stats(backend)
+      expect_gt(stats$indexed_waves, 0)
+      expect_identical(stats$tiled_tiles, 0)
+    })
+
+    test_that(sprintf("%s indexed all-match output crosses a compaction wave",
+                      backend), {
+      # CUDA crosses its 1,048,576-pair wave with multiple x rows; Metal crosses
+      # its 65,536-candidate command limit with one query.
+      if (backend == "metal") {
+        nx <- 1L
+        ny <- 65537L
+      } else {
+        nx <- 1025L
+        ny <- 1024L
+      }
+      x <- matrix(0, nrow = nx, ncol = 2L)
+      y <- matrix(0, nrow = ny, ncol = 2L)
+      output_bytes <- 8 * nx + 4 * nx * ny
+
+      actual <- sfgpu_within_distance(x, y, dist = 0, backend = backend,
+                                     max_output_bytes = output_bytes)
+      expect_length(actual, nx)
+      expect_true(all(vapply(actual, function(row) {
+        length(row) == ny && identical(row, seq_len(ny))
+      }, logical(1L))))
+
+      stats <- .Call(get("C_sfgpu_radius_stats", asNamespace("sfgpu")))
+      expect_identical(stats$total_pairs, as.double(nx) * ny)
+      expect_identical(stats$candidate_pairs, as.double(nx) * ny)
+      expect_identical(stats$accepted_pairs, as.double(nx) * ny)
+      dispatch <- radius_index_path_stats(backend)
+      expect_gte(dispatch$indexed_waves, 2)
+      expect_identical(dispatch$tiled_tiles, 0)
+
+      expect_error(sfgpu_within_distance(
+        x, y, dist = 0, backend = backend,
+        max_output_bytes = output_bytes - 1
+      ), "max_output_bytes")
+    })
   })
 }

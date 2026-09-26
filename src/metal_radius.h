@@ -2,6 +2,13 @@
 #define SFGPU_METAL_RADIUS_H
 #include "radius.h"
 
+struct SfgpuMetalRadiusStats {
+  double indexed_waves = 0;
+  double tiled_tiles = 0;
+};
+
+SfgpuMetalRadiusStats sfgpu_metal_radius_stats();
+
 void sfgpu_metal_radius(const double* x, std::size_t nx,
                         const double* y, std::size_t ny, double radius,
                         std::size_t tile_bytes, SfgpuRadiusEmit emit,

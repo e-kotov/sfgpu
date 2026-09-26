@@ -65,19 +65,19 @@ radius is converted to CRS units. For matrix inputs, a \code{units} radius is
 invalid.
 
 Membership is decided on the represented binary64 coordinates by the inclusive
-CPU double-precision predicate \code{hypot(dx, dy) <= dist}. CUDA and Metal
-generate conservative rectangular candidates, then the host applies that final
-predicate before returning indices. When the sorted \code{y} index and bounded
-query/task/output workspace fit \code{tile_bytes}, CUDA sorts the points on the
-host, transfers coordinates and original indices to the device, binary-searches
-x-coordinate ranges, filters by y coordinate, and compacts candidates. If the
-index workspace does not fit, CUDA uses a bounded tiled GPU rectangle scan; a
-49-byte tile selects this scan path. Metal continues to use the bounded tiled
-GPU scan. The CPU backend sorts and indexes the \code{y} points by x coordinate
-to prune candidates before applying the same predicate. The tiled GPU scan can
-examine \code{nrow(x) * nrow(y)} pairs, though it does not create the dense
-distance matrix. CUDA, Metal, and CPU have workload-dependent costs; no speed
-advantage is guaranteed, and CPU remains the default.
+CPU double-precision predicate \code{hypot(dx, dy) <= dist}. When the sorted
+\code{y} index and bounded query/task/output workspace fit \code{tile_bytes},
+CUDA and Metal sort the points on the host, retain original indices, transfer
+the index to the device, binary-search x-coordinate ranges, filter by y
+coordinate, and compact candidates before the host applies that final
+predicate. Metal stores ordered binary64 keys. If the index workspace does not
+fit, either GPU uses its bounded tiled rectangle scan; a 49-byte tile selects
+this path. CUDA compacts at most 1,048,576 candidates per wave and Metal at most
+65,536 per command. The CPU backend sorts and indexes the \code{y} points by x
+coordinate to prune candidates before applying the same predicate. A tiled GPU
+scan can examine \code{nrow(x) * nrow(y)} pairs, though no backend creates the
+dense distance matrix. CUDA, Metal, and CPU have workload-dependent costs; no
+speed advantage is guaranteed, and CPU remains the default.
 }
 \examples{
 x <- rbind(c(0, 0), c(3, 4))

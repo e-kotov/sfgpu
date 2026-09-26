@@ -71,6 +71,14 @@ jobs:
         run: Rscript tools/validate-metal.R
       - name: Run required radius validation
         run: Rscript tools/validate-radius.R
+      - name: Run required indexed Metal radius validation
+        env:
+          SFGPU_RADIUS_BACKEND: metal
+        run: |
+          Rscript tools/validate-radius-index.R
+          Rscript tools/validate-metal-index-keys.R
+      - name: Verify corrupted Metal index kernels are rejected
+        run: bash tools/check-metal-index-mutation.sh
       - name: Verify corrupted radius filters are rejected
         run: bash tools/check-radius-mutation.sh
       - name: Verify corrupted shader is rejected

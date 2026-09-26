@@ -5,9 +5,7 @@
 
 #include "radius.h"
 #include "cuda_radius.h"
-#ifdef SFGPU_WITH_METAL
 #include "metal_radius.h"
-#endif
 
 #include <algorithm>
 #include <cmath>
@@ -241,6 +239,22 @@ extern "C" SEXP C_sfgpu_cuda_radius_stats() {
   SfgpuCudaRadiusStats stats;
 #ifdef SFGPU_WITH_CUDA
   stats = sfgpu_cuda_radius_stats();
+#endif
+  SET_VECTOR_ELT(out, 0, Rf_ScalarReal(stats.indexed_waves));
+  SET_VECTOR_ELT(out, 1, Rf_ScalarReal(stats.tiled_tiles));
+  SET_STRING_ELT(names, 0, Rf_mkChar("indexed_waves"));
+  SET_STRING_ELT(names, 1, Rf_mkChar("tiled_tiles"));
+  Rf_setAttrib(out, R_NamesSymbol, names);
+  UNPROTECT(2);
+  return out;
+}
+
+extern "C" SEXP C_sfgpu_metal_radius_stats() {
+  SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
+  SfgpuMetalRadiusStats stats;
+#ifdef SFGPU_WITH_METAL
+  stats = sfgpu_metal_radius_stats();
 #endif
   SET_VECTOR_ELT(out, 0, Rf_ScalarReal(stats.indexed_waves));
   SET_VECTOR_ELT(out, 1, Rf_ScalarReal(stats.tiled_tiles));

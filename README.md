@@ -117,16 +117,19 @@ if the cap would be exceeded, before returning a partial result. The radius
 operation's `tile_bytes` budget includes its candidate inputs, output, and
 scratch; 49 bytes is the minimum for one pair.
 
-For CUDA radius calls, when the sorted `y` index and bounded query/task/output
-workspace fit `tile_bytes`, sfgpu sorts `y` on the host, transfers the sorted
-coordinates and original row indices to the device, binary-searches x-coordinate
-ranges for each query, and compacts the remaining rectangular candidates. The
-host still applies the final inclusive Euclidean predicate. If the full index
-workspace does not fit, CUDA uses its bounded tiled GPU scan instead; a 49-byte
-tile selects that path. Metal continues to use the bounded tiled GPU scan. The
-CPU backend uses its own sorted-y index and remains the default. This dispatch
-does not promise a speed advantage for CUDA; results depend on the data, output
-density, device, and tile budget.
+For CUDA and Metal radius calls, when the sorted `y` index and bounded
+query/task/output workspace fit `tile_bytes`, sfgpu sorts the `y` coordinates
+on the host, retains original row indices, transfers the sorted index to the
+device, binary-searches x-coordinate ranges for each query, and compacts the
+remaining rectangular candidates. Metal stores ordered binary64 coordinate
+keys in its index. The host applies the same final inclusive Euclidean
+predicate for both backends. If the full index workspace does not fit, CUDA and
+Metal use their bounded tiled GPU scans instead; a 49-byte tile selects that
+path. CUDA compacts at most 1,048,576 candidates per wave, while Metal compacts
+at most 65,536 per command to bound command duration. The CPU backend uses its
+own sorted-y index and remains the default. This dispatch does not promise a
+speed advantage for either GPU; results depend on the data, output density,
+device, and tile budget.
 
 ```r
 sfgpu_distance(x, y, max_output_bytes = 1024, tile_bytes = 40)
@@ -145,14 +148,14 @@ command duration; no physical-Mac speedup has been established.
 
 For `sfgpu_within_distance()`, every backend makes the final membership test
 with CPU double-precision `hypot(dx, dy) <= dist` on the represented binary64
-coordinates. CUDA's indexed path binary-searches x-coordinate ranges on a
-device-side sorted-y index, filters by the y-coordinate bound, and compacts
-candidates before the host applies the final hypot test. If the index workspace
-does not fit the tile budget, CUDA uses a bounded full GPU rectangle scan; that
-path can inspect O(nrow(x) * nrow(y)) pairs. Metal also uses the bounded full
-GPU rectangle scan. The CPU backend sorts and indexes the `y` points by x
-coordinate to prune candidates before applying the same predicate. None of
-these paths carries a speed guarantee or automatic backend choice.
+coordinates. CUDA and Metal indexed paths binary-search x-coordinate ranges on
+device-side sorted-y indexes, filter by the y-coordinate bound, and compact
+candidates before the host applies the final hypot test. Metal represents its
+sorted coordinates as ordered binary64 keys. If the index workspace does not
+fit the tile budget, either GPU uses a bounded full rectangle scan that can
+inspect O(nrow(x) * nrow(y)) pairs. The CPU backend sorts and indexes the `y`
+points by x coordinate to prune candidates before applying the same predicate.
+None of these paths carries a speed guarantee or automatic backend choice.
 
 Comparisons use the represented binary64 coordinates; precision already lost
 when coordinates were created cannot be recovered. For dense distances,
