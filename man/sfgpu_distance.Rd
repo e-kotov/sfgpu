@@ -43,7 +43,12 @@ collections are valid. Geographic or unknown CRSs, mismatched CRSs, mixed
 input kinds, missing or non-finite coordinates, extra dimensions, unsupported
 geometry types, and empty individual points are errors.
 
-Distances use double precision and robust hypot-style arithmetic. The
+Results are binary64 doubles. CPU and CUDA use double-precision hypot-style
+arithmetic. Metal uses exact scaled-integer encoding and wide integer distance
+arithmetic. Pairs that cannot be encoded exactly, approach a rounding boundary,
+or have a result exponent outside [-900, 900] are corrected using CPU hypot.
+The corrected fraction depends on the input and tile size and can reach 100\%.
+A missing Metal device or command failure still errors. The
 \code{max_output_bytes} limit applies to result payload only; tiling bounds
 execution buffers but does not make the returned matrix out-of-core.
 }

@@ -10,8 +10,8 @@
 #include <stdexcept>
 
 namespace {
-struct Point { std::int64_t x, y; };
-static_assert(sizeof(Point) == 16, "Metal point layout must be two int64 values");
+struct EncodedPoint { std::int64_t x, y; };
+static_assert(sizeof(EncodedPoint) == 16, "Metal point layout must be two int64 values");
 constexpr std::uint64_t correction = UINT64_MAX;
 constexpr std::uint64_t unwritten = UINT64_C(0x7ff8000000000000);
 SfgpuMetalStats last_stats;
@@ -32,7 +32,7 @@ struct Context {
     queue = [device newCommandQueue];
     if (!queue) throw failure("command queue creation");
     MTLCompileOptions* options = [MTLCompileOptions new];
-    options.fastMathEnabled = NO;
+    // The shader performs integer arithmetic only; floating math modes do not apply.
     NSError* error = nil;
     id<MTLLibrary> library = [device newLibraryWithSource:
         [NSString stringWithUTF8String:sfgpu_metal_source]
@@ -83,7 +83,7 @@ bool encode(double value, int quantum, std::int64_t& result) {
 }
 
 void pack(const double* input, std::size_t stride, std::size_t offset,
-          std::size_t count, int quantum, Point* output) {
+          std::size_t count, int quantum, EncodedPoint* output) {
   for (std::size_t i = 0; i < count; ++i) {
     if (!encode(input[offset + i], quantum, output[i].x) ||
         !encode(input[stride + offset + i], quantum, output[i].y)) {
@@ -139,8 +139,8 @@ void sfgpu_metal_distance(const double* x, std::size_t nx,
     id<MTLBuffer> by = [ctx.device newBufferWithLength:16 * ty options:MTLResourceStorageModeShared];
     id<MTLBuffer> bo = [ctx.device newBufferWithLength:8 * tx * ty options:MTLResourceStorageModeShared];
     if (!bx || !by || !bo) throw failure("tile buffer allocation");
-    auto* px = static_cast<Point*>([bx contents]);
-    auto* py = static_cast<Point*>([by contents]);
+    auto* px = static_cast<EncodedPoint*>([bx contents]);
+    auto* py = static_cast<EncodedPoint*>([by contents]);
     auto* po = static_cast<std::uint64_t*>([bo contents]);
     if (!px || !py || !po) throw failure("shared buffer mapping");
     const NSUInteger max_threads = ctx.pipeline.maxTotalThreadsPerThreadgroup;

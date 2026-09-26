@@ -40,7 +40,8 @@ select the compiler, toolkit location, and architecture flags when needed.
 Those flags must be supported by the installed `nvcc`. A GPU-enabled build
 does not guarantee that a usable device is available at runtime. Inspect build
 and runtime state with `sfgpu_backends()`; a forced GPU call errors if the
-backend was not compiled or no device is available. It never falls back to CPU.
+backend was not compiled or no device is available. Device failures are errors;
+the Metal numerical correction path described below is separate.
 CPU remains the default backend in every build.
 
 ## Use
@@ -99,7 +100,18 @@ make the returned matrix out-of-core.
 sfgpu_distance(x, y, max_output_bytes = 1024, tile_bytes = 40)
 ```
 
-Distances use double precision and robust hypot-style arithmetic. Comparisons
+Results are binary64 doubles. CPU and CUDA use double-precision, robust
+hypot-style arithmetic. Metal uses exact scaled-integer coordinates, wide
+integer squared distances and an integer square root; it does not use native
+double arithmetic, which Metal lacks. Pairs that cannot be encoded exactly,
+lie near a rounding boundary, or fall outside the GPU result exponent range
+[-900, 900] are recomputed using CPU double-precision hypot. The fraction
+corrected depends on the coordinates and tile size and can reach 100%.
+`tools/validate-metal.R` reports accepted GPU and corrected CPU pair counts.
+Metal commands are capped at 65,536 pairs to bound command duration; no
+physical-Mac speedup has been established.
+
+Comparisons
 are defined for the represented binary64 coordinates; precision already lost
 when coordinates were created cannot be recovered. Ordinary finite results
 are checked against an absolute bound of
