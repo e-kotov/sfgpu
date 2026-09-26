@@ -1,13 +1,15 @@
 #' Dense Cartesian point distances
 #'
 #' @param x,y Two-column numeric matrices or projected `sf`/`sfc` XY POINT inputs.
-#' @param backend `"cpu"` (default) or explicit `"cuda"`.
+#' @param backend `"cpu"` (default), `"cuda"`, or `"metal"`. GPU backends
+#'   must be explicitly selected and error when they are unavailable.
 #' @param max_output_bytes Inclusive cap on the returned matrix payload, in bytes.
-#' @param tile_bytes Inclusive cap on a CUDA tile's two inputs and output, in bytes.
+#' @param tile_bytes Inclusive cap on a GPU execution tile's two inputs and
+#'   output, in bytes.
 #' @return A numeric distance matrix for matrix inputs, or a `units` matrix for
 #'   spatial inputs. The dimensions are `nrow(x)` by `nrow(y)`.
 #' @export
-sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda"),
+sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
                            max_output_bytes = 1024^3,
                            tile_bytes = 64 * 1024^2) {
   backend <- match.arg(backend)
@@ -76,18 +78,22 @@ sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda"),
 
 #' Query available sfgpu backends
 #'
-#' @return A named list with `cpu` and `cuda` entries. Each contains logical
+#' @return A named list with `cpu`, `cuda`, and `metal` entries. Each contains logical
 #'   `compiled` and `available` scalars and character `device` and `reason`
 #'   scalars. Inapplicable strings are `NA_character_`.
 #' @export
 sfgpu_backends <- function() {
   cuda <- .Call(C_sfgpu_cuda_info)
+  metal <- .Call(C_sfgpu_metal_info)
   list(
     cpu = list(compiled = TRUE, available = TRUE,
                device = NA_character_, reason = NA_character_),
     cuda = list(compiled = isTRUE(cuda[[1L]]),
                 available = isTRUE(cuda[[2L]]),
-                device = cuda[[3L]], reason = cuda[[4L]])
+                device = cuda[[3L]], reason = cuda[[4L]]),
+    metal = list(compiled = isTRUE(metal[[1L]]),
+                 available = isTRUE(metal[[2L]]),
+                 device = metal[[3L]], reason = metal[[4L]])
   )
 }
 

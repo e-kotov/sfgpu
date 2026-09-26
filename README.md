@@ -1,21 +1,23 @@
 # sfgpu
 
 > [!WARNING]
-> **Experimental development package.** This first version supports dense
-> Cartesian XY point distances on CPU and, when built with CUDA, NVIDIA GPUs.
+> **Experimental development package.** This version supports dense Cartesian
+> XY point distances on CPU and, when enabled at build time, NVIDIA CUDA and
+> Apple Metal GPUs.
 > The API and implementation may change. It is not a CRAN release and has no
 > performance guarantee.
 
 `sfgpu` is an opt-in companion to [`sf`](https://r-spatial.github.io/sf/).
 It computes a dense distance matrix between two point collections. CPU is the
-default backend; CUDA is selected explicitly. The package does not modify `sf`.
+default backend; CUDA and Metal are selected explicitly. The package does not
+modify `sf`.
 
 All development happens on the `dev` branch and on feature branches. The
 `main` branch remains README-only until the package is stable enough to try.
 
 ## Install
 
-The default build is CPU-only and does not require a CUDA toolkit:
+The default build is CPU-only and does not require a GPU toolchain:
 
 ```sh
 R CMD INSTALL .
@@ -27,12 +29,19 @@ CUDA support is opt-in. Build with a working NVIDIA CUDA compiler and toolkit:
 R CMD INSTALL --configure-args=--enable-cuda .
 ```
 
+Apple Metal support is opt-in and requires Apple's Metal SDK and compiler:
+
+```sh
+R CMD INSTALL --configure-args=--enable-metal .
+```
+
 The configure script accepts `NVCC`, `CUDA_HOME`, and `CUDA_ARCH_FLAGS` to
 select the compiler, toolkit location, and architecture flags when needed.
-Those flags must be supported by the installed `nvcc`. A CUDA-enabled build
-does not guarantee that a usable device is available at runtime. Inspect the
-build and runtime state with `sfgpu_backends()`; a forced CUDA call errors if
-CUDA was not compiled or no device is available. It never falls back to CPU.
+Those flags must be supported by the installed `nvcc`. A GPU-enabled build
+does not guarantee that a usable device is available at runtime. Inspect build
+and runtime state with `sfgpu_backends()`; a forced GPU call errors if the
+backend was not compiled or no device is available. It never falls back to CPU.
+CPU remains the default backend in every build.
 
 ## Use
 
@@ -47,6 +56,7 @@ x <- rbind(c(0, 0), c(3, 4))
 y <- rbind(c(0, 0), c(5, 4))
 sfgpu_distance(x, y)                         # CPU by default
 sfgpu_distance(x, y, backend = "cuda")      # explicitly require CUDA
+sfgpu_distance(x, y, backend = "metal")     # explicitly require Metal
 sfgpu_backends()                             # compiled and available backends
 ```
 
@@ -78,7 +88,7 @@ sfgpu_distance(points)                      # units follow projected CRS
 `max_output_bytes` limits the dense result matrix payload and is inclusive.
 Its default is 1 GiB. It does not cap total R process memory. For example, a
 100,000 by 100,000 double matrix needs 80 GB for the result alone. Requests
-over the limit are rejected before result allocation or CUDA startup.
+over the limit are rejected before result allocation or GPU startup.
 
 `tile_bytes` is an inclusive execution budget for the two coordinate input
 tiles plus the distance output tile. Its default is 64 MiB; 40 bytes is the
@@ -99,10 +109,11 @@ need relative checks.
 ## Scope
 
 This version does not implement geographic/geodesic distances, other geometry
-types, sparse or out-of-core results, automatic backend selection, or Apple GPU
-execution. CUDA support and CPU-only portability are separate capabilities;
-CPU checks on macOS do not verify Apple GPU execution. Performance has not
-been established by this README.
+types, sparse or out-of-core results, or automatic backend selection. CUDA,
+Metal, and CPU-only portability are separate capabilities. The hosted macOS
+Metal CI runner validates Metal compilation and correctness on its virtualized
+Apple device; it does not establish performance on a physical Mac. Performance
+has not been established by this README.
 
 ## Licence
 

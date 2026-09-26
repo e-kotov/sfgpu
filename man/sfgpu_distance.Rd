@@ -5,7 +5,7 @@
 sfgpu_distance(
   x,
   y = x,
-  backend = c("cpu", "cuda"),
+  backend = c("cpu", "cuda", "metal"),
   max_output_bytes = 1024^3,
   tile_bytes = 64 * 1024^2
 )
@@ -17,9 +17,10 @@ sfgpu_distance(
   \item{y}{A two-column numeric matrix or spatial input matching the input
   category of \code{x}. Spatial inputs may be \code{sf} or \code{sfc} and
   must have the same known projected CRS. Defaults to \code{x}.}
-  \item{backend}{Backend to use: \code{"cpu"} or \code{"cuda"}. The default
-  selects CPU. An explicit CUDA request errors if the package was built without
-  CUDA or no CUDA device is available; it never falls back to CPU.}
+  \item{backend}{Backend to use: \code{"cpu"}, \code{"cuda"}, or
+  \code{"metal"}. The default selects CPU. An explicit GPU request errors if
+  the package was built without that backend or no device is available; it
+  never falls back to CPU.}
   \item{max_output_bytes}{Inclusive cap on the dense double result payload in
   bytes. The default is 1 GiB. This does not cap total process memory.}
   \item{tile_bytes}{Inclusive byte budget for both coordinate input tiles and
@@ -47,9 +48,10 @@ Distances use double precision and robust hypot-style arithmetic. The
 execution buffers but does not make the returned matrix out-of-core.
 }
 \details{
-The default installation is CPU-only. CUDA is an optional build feature. Use
-\code{sfgpu_backends()} to inspect whether each backend is compiled and
-available at runtime. A CUDA-enabled build may still have no usable device.
+The default installation is CPU-only. CUDA and Metal are optional build
+features. Use \code{sfgpu_backends()} to inspect whether each backend is
+compiled and available at runtime. A GPU-enabled build may still have no usable
+device.
 }
 \examples{
 x <- rbind(c(0, 0), c(3, 4))

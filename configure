@@ -2,17 +2,57 @@
 set -eu
 
 enable_cuda=no
+enable_metal=no
 for option in "$@"; do
   case "$option" in
     --enable-cuda) enable_cuda=yes ;;
     --disable-cuda) enable_cuda=no ;;
-    --help) printf '%s\n' 'Optional: --enable-cuda (requires NVCC and CUDA runtime)' ; exit 0 ;;
+    --enable-metal) enable_metal=yes ;;
+    --disable-metal) enable_metal=no ;;
+    --help) printf '%s\n' 'Optional: --enable-cuda (NVCC); --enable-metal (macOS Metal.framework)' ; exit 0 ;;
     *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
   esac
 done
 
 # A source tree may have been installed previously in a different mode.
 rm -f src/*.o src/*.so src/*.cuo
+
+if [ "$enable_cuda" = yes ] && [ "$enable_metal" = yes ]; then
+  printf '%s\n' 'sfgpu: choose one GPU toolkit per source build' >&2
+  exit 1
+fi
+
+if [ "$enable_metal" = yes ]; then
+  if [ "$(uname -s)" != Darwin ]; then
+    printf '%s\n' 'sfgpu: --enable-metal requires macOS' >&2
+    exit 1
+  fi
+  metal_cxx=clang++
+  probe_dir=$(mktemp -d "${TMPDIR:-/tmp}/sfgpu-metal.XXXXXX")
+  trap 'rm -rf "$probe_dir"' EXIT HUP INT TERM
+  cat > "$probe_dir/probe.mm" <<'EOF'
+#import <Metal/Metal.h>
+int main() { @autoreleasepool { return MTLCreateSystemDefaultDevice() == nil; } }
+EOF
+  if ! "$metal_cxx" -std=c++17 -fobjc-arc "$probe_dir/probe.mm" \
+      -framework Metal -framework Foundation -o "$probe_dir/probe" \
+      > "$probe_dir/build.log" 2>&1; then
+    cat "$probe_dir/build.log" >&2
+    printf '%s\n' 'sfgpu: requested Metal compiler/link check failed' >&2
+    exit 1
+  fi
+  cat > src/Makevars <<'EOF'
+CXX_STD = CXX17
+PKG_CPPFLAGS = -DSFGPU_WITH_METAL
+PKG_LIBS = -framework Metal -framework Foundation
+OBJECTS = init.o distance.o metal_distance.o
+all: $(SHLIB)
+metal_distance.o: metal_distance.mm metal_distance.h metal_kernel.h
+	$(CXX17) $(CXX17STD) $(CXX17FLAGS) $(CXX17PICFLAGS) $(CPPFLAGS) $(PKG_CPPFLAGS) -fobjc-arc -c metal_distance.mm -o metal_distance.o
+EOF
+  printf '%s\n' 'sfgpu: building explicit Metal backend'
+  exit 0
+fi
 
 if [ "$enable_cuda" = no ]; then
   cat > src/Makevars <<'EOF'

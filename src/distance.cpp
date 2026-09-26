@@ -14,6 +14,7 @@
 #ifdef SFGPU_WITH_CUDA
 #include "cuda_distance.h"
 #endif
+#include "metal_distance.h"
 
 namespace {
 
@@ -67,7 +68,8 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
   }
   const char* backend_name = CHAR(STRING_ELT(backend, 0));
   const bool use_cuda = std::strcmp(backend_name, "cuda") == 0;
-  if (!use_cuda && std::strcmp(backend_name, "cpu") != 0) {
+  const bool use_metal = std::strcmp(backend_name, "metal") == 0;
+  if (!use_cuda && !use_metal && std::strcmp(backend_name, "cpu") != 0) {
     Rf_error("unknown distance backend");
   }
   const double tile_value = REAL(tile)[0];
@@ -79,6 +81,11 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
 #ifndef SFGPU_WITH_CUDA
   if (use_cuda) {
     Rf_error("CUDA support is not compiled; reinstall with --enable-cuda");
+  }
+#endif
+#ifndef SFGPU_WITH_METAL
+  if (use_metal) {
+    Rf_error("Metal support is not compiled; reinstall with --enable-metal");
   }
 #endif
   SEXP out = PROTECT(Rf_allocMatrix(REALSXP, nx, ny));
@@ -100,6 +107,12 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
                             static_cast<std::size_t>(tile_value),
                             interrupt_ok);
 #endif
+      } else if (use_metal) {
+#ifdef SFGPU_WITH_METAL
+        sfgpu_metal_distance(REAL(x), static_cast<std::size_t>(nx),
+                             REAL(y), static_cast<std::size_t>(ny), REAL(out),
+                             static_cast<std::size_t>(tile_value), interrupt_ok);
+#endif
       } else {
         cpu_distance(REAL(x), static_cast<std::size_t>(nx), REAL(y),
                      static_cast<std::size_t>(ny), REAL(out));
@@ -116,6 +129,53 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
   }
   UNPROTECT(2);
   return out;
+}
+
+extern "C" SEXP C_sfgpu_metal_info() {
+  bool compiled = false;
+  bool available = false;
+  char device_text[256] = {0};
+  char reason_text[1024] = {0};
+#ifdef SFGPU_WITH_METAL
+  compiled = true;
+  try {
+    std::string device;
+    std::string reason;
+    available = sfgpu_metal_info(device, reason);
+    std::snprintf(device_text, sizeof(device_text), "%s", device.c_str());
+    std::snprintf(reason_text, sizeof(reason_text), "%s", reason.c_str());
+  } catch (const std::exception& e) {
+    std::snprintf(reason_text, sizeof(reason_text), "%s", e.what());
+  }
+#else
+  std::snprintf(reason_text, sizeof(reason_text), "%s",
+                "Metal support is not compiled; reinstall with --enable-metal");
+#endif
+  SEXP ans = PROTECT(Rf_allocVector(VECSXP, 4));
+  SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(compiled));
+  SET_VECTOR_ELT(ans, 1, Rf_ScalarLogical(available));
+  SET_VECTOR_ELT(ans, 2, device_text[0] == '\0' ? Rf_ScalarString(NA_STRING) : Rf_mkString(device_text));
+  SET_VECTOR_ELT(ans, 3, reason_text[0] == '\0' ? Rf_ScalarString(NA_STRING) : Rf_mkString(reason_text));
+  UNPROTECT(1);
+  return ans;
+}
+
+extern "C" SEXP C_sfgpu_metal_stats() {
+  SfgpuMetalStats stats;
+#ifdef SFGPU_WITH_METAL
+  stats = sfgpu_metal_stats();
+#endif
+  SEXP ans = PROTECT(Rf_allocVector(VECSXP, 3));
+  SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
+  SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(stats.gpu_pairs));
+  SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(stats.cpu_pairs));
+  SET_VECTOR_ELT(ans, 2, Rf_ScalarReal(stats.tiles));
+  SET_STRING_ELT(names, 0, Rf_mkChar("gpu_pairs"));
+  SET_STRING_ELT(names, 1, Rf_mkChar("cpu_pairs"));
+  SET_STRING_ELT(names, 2, Rf_mkChar("tiles"));
+  Rf_setAttrib(ans, R_NamesSymbol, names);
+  UNPROTECT(2);
+  return ans;
 }
 
 extern "C" SEXP C_sfgpu_cuda_info() {

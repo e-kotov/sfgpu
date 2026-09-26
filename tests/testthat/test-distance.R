@@ -1,6 +1,6 @@
 test_that("backend reporting distinguishes compiled and available", {
   info <- sfgpu_backends()
-  expect_named(info, c("cpu", "cuda"))
+  expect_named(info, c("cpu", "cuda", "metal"))
   for (backend in info) {
     expect_type(backend$compiled, "logical")
     expect_length(backend$compiled, 1L)
@@ -14,10 +14,14 @@ test_that("backend reporting distinguishes compiled and available", {
   expect_true(info$cpu$compiled)
   expect_true(info$cpu$available)
 
-  if (identical(Sys.getenv("SFGPU_REQUIRE_CUDA"), "true")) {
-    expect_true(info$cuda$compiled, info$cuda$reason)
-    expect_true(info$cuda$available, info$cuda$reason)
-    expect_false(is.na(info$cuda$device))
+  for (backend in c("cuda", "metal")) {
+    required <- identical(Sys.getenv(paste0("SFGPU_REQUIRE_", toupper(backend))),
+                          "true")
+    if (required) {
+      expect_true(info[[backend]]$compiled, info[[backend]]$reason)
+      expect_true(info[[backend]]$available, info[[backend]]$reason)
+      expect_false(is.na(info[[backend]]$device))
+    }
   }
 })
 
@@ -201,6 +205,18 @@ test_that("forced CUDA never falls back silently", {
   } else {
     expect_error(sfgpu_distance(rbind(c(0, 0)), rbind(c(3, 4)),
                                 backend = "cuda"), "CUDA")
+  }
+  expect_equal(sfgpu_distance(rbind(c(0, 0)), rbind(c(3, 4))), matrix(5))
+})
+
+test_that("forced Metal never falls back silently", {
+  info <- sfgpu_backends()
+  if (isTRUE(info$metal$available)) {
+    expect_equal(sfgpu_distance(rbind(c(0, 0)), rbind(c(3, 4)),
+                                backend = "metal"), matrix(5))
+  } else {
+    expect_error(sfgpu_distance(rbind(c(0, 0)), rbind(c(3, 4)),
+                                backend = "metal"), "Metal")
   }
   expect_equal(sfgpu_distance(rbind(c(0, 0)), rbind(c(3, 4))), matrix(5))
 })
