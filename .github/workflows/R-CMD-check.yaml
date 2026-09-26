@@ -69,6 +69,10 @@ jobs:
           R CMD INSTALL --configure-args=--enable-metal --library="$RUNNER_TEMP/sfgpu-metal-lib" .
       - name: Run required Metal validation
         run: Rscript tools/validate-metal.R
+      - name: Run required radius validation
+        run: Rscript tools/validate-radius.R
+      - name: Verify corrupted radius filters are rejected
+        run: bash tools/check-radius-mutation.sh
       - name: Verify corrupted shader is rejected
         run: bash tools/check-metal-mutation.sh
       - uses: r-lib/actions/check-r-package@v2

@@ -15,43 +15,9 @@ sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
   backend <- match.arg(backend)
   max_output_bytes <- .sfgpu_bytes(max_output_bytes, "max_output_bytes", 1)
   tile_bytes <- .sfgpu_bytes(tile_bytes, "tile_bytes", 40)
-
-  x_spatial <- inherits(x, "sf") || inherits(x, "sfc")
-  y_spatial <- inherits(y, "sf") || inherits(y, "sfc")
-  if (x_spatial != y_spatial) {
-    stop("x and y must both be matrices or both be sf/sfc spatial inputs", call. = FALSE)
-  }
-  if (x_spatial) {
-    if (!requireNamespace("sf", quietly = TRUE) ||
-        !requireNamespace("units", quietly = TRUE)) {
-      stop("sf and units are required for spatial inputs", call. = FALSE)
-    }
-    x_geom <- if (inherits(x, "sf")) sf::st_geometry(x) else x
-    y_geom <- if (inherits(y, "sf")) sf::st_geometry(y) else y
-    x_crs <- sf::st_crs(x_geom)
-    y_crs <- sf::st_crs(y_geom)
-    if (is.na(x_crs) || is.na(y_crs)) {
-      stop("spatial inputs require a known projected CRS", call. = FALSE)
-    }
-    if (!isTRUE(x_crs == y_crs)) {
-      stop("spatial inputs must have the same CRS", call. = FALSE)
-    }
-    wkt <- x_crs$wkt
-    projected <- startsWith(wkt, "PROJCRS[") || startsWith(wkt, "PROJCS[") ||
-      (startsWith(wkt, "BOUNDCRS[") &&
-       grepl("SOURCECRS\\[[[:space:]]*(PROJCRS|PROJCS)\\[", wkt))
-    if (!isTRUE(projected) ||
-        !identical(sf::st_is_longlat(x_geom), FALSE) ||
-        !identical(sf::st_is_longlat(y_geom), FALSE) ||
-        is.null(x_crs$ud_unit)) {
-      stop("spatial inputs require a projected CRS with known distance units", call. = FALSE)
-    }
-    x_mat <- .sfgpu_points(x_geom, "x")
-    y_mat <- .sfgpu_points(y_geom, "y")
-  } else {
-    x_mat <- .sfgpu_matrix(x, "x")
-    y_mat <- .sfgpu_matrix(y, "y")
-  }
+  inputs <- .sfgpu_prepare_inputs(x, y)
+  x_mat <- inputs$x_mat
+  y_mat <- inputs$y_mat
 
   nx <- nrow(x_mat)
   ny <- nrow(y_mat)
@@ -69,11 +35,51 @@ sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
   # This call allocates the result once, then fills it directly in column-major
   # order. GPU backends are not initialized until after the payload check above.
   out <- .Call(C_sfgpu_distance, x_mat, y_mat, backend, tile_bytes)
-  if (x_spatial) {
-    units::set_units(out, base::units(x_crs$ud_unit), mode = "standard")
+  if (inputs$spatial) {
+    units::set_units(out, base::units(inputs$x_crs$ud_unit), mode = "standard")
   } else {
     out
   }
+}
+
+.sfgpu_prepare_inputs <- function(x, y) {
+  x_spatial <- inherits(x, "sf") || inherits(x, "sfc")
+  y_spatial <- inherits(y, "sf") || inherits(y, "sfc")
+  if (x_spatial != y_spatial) {
+    stop("x and y must both be matrices or both be sf/sfc spatial inputs", call. = FALSE)
+  }
+  if (!x_spatial) {
+    return(list(x_mat = .sfgpu_matrix(x, "x"),
+                y_mat = .sfgpu_matrix(y, "y"),
+                spatial = FALSE, x_crs = NULL))
+  }
+  if (!requireNamespace("sf", quietly = TRUE) ||
+      !requireNamespace("units", quietly = TRUE)) {
+    stop("sf and units are required for spatial inputs", call. = FALSE)
+  }
+  x_geom <- if (inherits(x, "sf")) sf::st_geometry(x) else x
+  y_geom <- if (inherits(y, "sf")) sf::st_geometry(y) else y
+  x_crs <- sf::st_crs(x_geom)
+  y_crs <- sf::st_crs(y_geom)
+  if (is.na(x_crs) || is.na(y_crs)) {
+    stop("spatial inputs require a known projected CRS", call. = FALSE)
+  }
+  if (!isTRUE(x_crs == y_crs)) {
+    stop("spatial inputs must have the same CRS", call. = FALSE)
+  }
+  wkt <- x_crs$wkt
+  projected <- startsWith(wkt, "PROJCRS[") || startsWith(wkt, "PROJCS[") ||
+    (startsWith(wkt, "BOUNDCRS[") &&
+     grepl("SOURCECRS\\[[[:space:]]*(PROJCRS|PROJCS)\\[", wkt))
+  if (!isTRUE(projected) ||
+      !identical(sf::st_is_longlat(x_geom), FALSE) ||
+      !identical(sf::st_is_longlat(y_geom), FALSE) ||
+      is.null(x_crs$ud_unit)) {
+    stop("spatial inputs require a projected CRS with known distance units", call. = FALSE)
+  }
+  list(x_mat = .sfgpu_points(x_geom, "x"),
+       y_mat = .sfgpu_points(y_geom, "y"),
+       spatial = TRUE, x_crs = x_crs)
 }
 
 #' Query available sfgpu backends

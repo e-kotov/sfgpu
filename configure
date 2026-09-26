@@ -45,10 +45,12 @@ EOF
 CXX_STD = CXX17
 PKG_CPPFLAGS = -DSFGPU_WITH_METAL
 PKG_LIBS = -framework Metal -framework Foundation
-OBJECTS = init.o distance.o metal_distance.o
+OBJECTS = init.o distance.o radius.o metal_distance.o metal_radius.o
 all: $(SHLIB)
 metal_distance.o: metal_distance.mm metal_distance.h metal_kernel.h
 	$(CXX17) $(CXX17STD) $(CXX17FLAGS) $(CXX17PICFLAGS) $(CPPFLAGS) $(PKG_CPPFLAGS) -fobjc-arc -c metal_distance.mm -o metal_distance.o
+metal_radius.o: metal_radius.mm metal_radius.h metal_radius_kernel.h radius.h
+	$(CXX17) $(CXX17STD) $(CXX17FLAGS) $(CXX17PICFLAGS) $(CPPFLAGS) $(PKG_CPPFLAGS) -fobjc-arc -c metal_radius.mm -o metal_radius.o
 EOF
   printf '%s\n' 'sfgpu: building explicit Metal backend'
   exit 0
@@ -57,7 +59,7 @@ fi
 if [ "$enable_cuda" = no ]; then
   cat > src/Makevars <<'EOF'
 CXX_STD = CXX17
-OBJECTS = init.o distance.o
+OBJECTS = init.o distance.o radius.o
 EOF
   printf '%s\n' 'sfgpu: building portable CPU backend'
   exit 0
@@ -123,11 +125,13 @@ cat > src/Makevars <<EOF
 CXX_STD = CXX17
 PKG_CPPFLAGS = -DSFGPU_WITH_CUDA
 PKG_LIBS = -L"$cuda_lib" -Wl,-rpath,"$cuda_lib" -lcudart
-OBJECTS = init.o distance.o cuda_distance.o
+OBJECTS = init.o distance.o radius.o cuda_distance.o cuda_radius.o
 NVCC = "$nvcc"
 CUDA_ARCH_FLAGS = $arch_flags
 all: \$(SHLIB)
 cuda_distance.o: cuda_distance.cu cuda_distance.h
 	\$(NVCC) -std=c++17 -Xcompiler=-fPIC --fmad=false --prec-div=true --prec-sqrt=true \$(CUDA_ARCH_FLAGS) -I"$cuda_inc" -c cuda_distance.cu -o cuda_distance.o
+cuda_radius.o: cuda_radius.cu cuda_radius.h radius.h
+	\$(NVCC) -std=c++17 -Xcompiler=-fPIC --fmad=false --prec-div=true --prec-sqrt=true \$(CUDA_ARCH_FLAGS) -I"$cuda_inc" -c cuda_radius.cu -o cuda_radius.o
 EOF
 printf '%s\n' "sfgpu: building CUDA backend with $nvcc ($arch_flags)"

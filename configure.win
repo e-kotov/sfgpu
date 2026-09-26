@@ -10,5 +10,5 @@ done
 rm -f src/*.o src/*.dll
 cat > src/Makevars.win <<'EOF'
 CXX_STD = CXX17
-OBJECTS = init.o distance.o
+OBJECTS = init.o distance.o radius.o
 EOF
