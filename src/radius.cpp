@@ -102,6 +102,24 @@ SEXP row_names(SEXP matrix) {
   return names == R_NilValue ? R_NilValue : VECTOR_ELT(names, 0);
 }
 
+struct OutputState {
+  const std::vector<std::vector<int>>* rows;
+  SEXP out;
+};
+
+// R allocation failures must return through C++ before native rows are destroyed.
+// The outer list is protected by the caller before any native resources exist.
+void fill_output(void* data) {
+  auto* state = static_cast<OutputState*>(data);
+  for (std::size_t i = 0; i < state->rows->size(); ++i) {
+    const auto& row = (*state->rows)[i];
+    SEXP neighbours = PROTECT(Rf_allocVector(INTSXP, row.size()));
+    std::copy(row.begin(), row.end(), INTEGER(neighbours));
+    SET_VECTOR_ELT(state->out, i, neighbours);
+    UNPROTECT(1);
+  }
+}
+
 }  // namespace
 
 extern "C" SEXP C_sfgpu_within_distance(SEXP x, SEXP y, SEXP backend,
@@ -158,46 +176,49 @@ extern "C" SEXP C_sfgpu_within_distance(SEXP x, SEXP y, SEXP backend,
   const std::size_t max_hits =
       static_cast<std::size_t>(std::floor((cap_value - base_bytes) / 4.0));
 
-  char error_text[1024] = {0};
-  std::vector<std::vector<int>> rows;
-  try {
-    Collector collector(REAL(x), REAL(y), nx, ny, radius_value, max_hits);
-    if (use_cuda) {
-#ifdef SFGPU_WITH_CUDA
-      sfgpu_cuda_radius(REAL(x), nx, REAL(y), ny, radius_value,
-                        static_cast<std::size_t>(tile_value),
-                        Collector::emit, &collector, interrupt_ok);
-#endif
-    } else if (use_metal) {
-#ifdef SFGPU_WITH_METAL
-      sfgpu_metal_radius(REAL(x), nx, REAL(y), ny, radius_value,
-                         static_cast<std::size_t>(tile_value),
-                         Collector::emit, &collector, interrupt_ok);
-#endif
-    } else {
-      cpu_radius(REAL(x), nx, REAL(y), ny, radius_value, collector);
-    }
-    for (auto& row : collector.rows) std::sort(row.begin(), row.end());
-    last_stats = {static_cast<double>(nx) * static_cast<double>(ny),
-                  static_cast<double>(collector.candidates),
-                  static_cast<double>(collector.hits)};
-    rows = std::move(collector.rows);
-  } catch (const std::exception& e) {
-    std::snprintf(error_text, sizeof(error_text), "%s", e.what());
-  } catch (...) {
-    std::snprintf(error_text, sizeof(error_text), "%s", "unknown native radius error");
-  }
-  if (error_text[0]) Rf_error("%s", error_text);
-
   SEXP out = PROTECT(Rf_allocVector(VECSXP, nx_int));
   SEXP names = row_names(x);
   if (names != R_NilValue) Rf_setAttrib(out, R_NamesSymbol, names);
-  for (std::size_t i = 0; i < nx; ++i) {
-    SEXP neighbours = PROTECT(Rf_allocVector(INTSXP, rows[i].size()));
-    std::copy(rows[i].begin(), rows[i].end(), INTEGER(neighbours));
-    SET_VECTOR_ELT(out, i, neighbours);
+  char error_text[1024] = {0};
+  {
+    std::vector<std::vector<int>> rows;
+    try {
+      Collector collector(REAL(x), REAL(y), nx, ny, radius_value, max_hits);
+      if (use_cuda) {
+#ifdef SFGPU_WITH_CUDA
+        sfgpu_cuda_radius(REAL(x), nx, REAL(y), ny, radius_value,
+                          static_cast<std::size_t>(tile_value),
+                          Collector::emit, &collector, interrupt_ok);
+#endif
+      } else if (use_metal) {
+#ifdef SFGPU_WITH_METAL
+        sfgpu_metal_radius(REAL(x), nx, REAL(y), ny, radius_value,
+                           static_cast<std::size_t>(tile_value),
+                           Collector::emit, &collector, interrupt_ok);
+#endif
+      } else {
+        cpu_radius(REAL(x), nx, REAL(y), ny, radius_value, collector);
+      }
+      for (auto& row : collector.rows) std::sort(row.begin(), row.end());
+      rows = std::move(collector.rows);
+      OutputState output{&rows, out};
+      if (!R_ToplevelExec(fill_output, &output)) {
+        throw std::runtime_error("radius result allocation failed");
+      }
+      last_stats = {static_cast<double>(nx) * static_cast<double>(ny),
+                    static_cast<double>(collector.candidates),
+                    static_cast<double>(collector.hits)};
+    } catch (const std::exception& e) {
+      std::snprintf(error_text, sizeof(error_text), "%s", e.what());
+    } catch (...) {
+      std::snprintf(error_text, sizeof(error_text), "%s", "unknown native radius error");
+    }
+  } // Native row storage is released before any R non-local jump.
+  if (error_text[0]) {
     UNPROTECT(1);
+    Rf_error("%s", error_text);
   }
+
   UNPROTECT(1);
   return out;
 }

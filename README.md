@@ -62,20 +62,22 @@ sfgpu_within_distance(x, y, dist = 3)        # sparse radius matches
 sfgpu_backends()                             # compiled and available backends
 ```
 
-The result has `nrow(x)` rows and `nrow(y)` columns. Matrix dimnames are
-propagated. With `y` omitted, the function returns all pairwise distances
+`sfgpu_distance()` returns a numeric matrix with `nrow(x)` rows and `nrow(y)`
+columns; for spatial inputs, the matrix carries the CRS distance units. Matrix
+dimnames are propagated. With `y` omitted, it returns all pairwise distances
 within `x`:
 
 ```r
 sfgpu_distance(x)
 ```
 
-Spatial inputs must both be spatial (`sf` or `sfc`), have the same known
-projected CRS, and contain nonempty XY POINT geometries. The result carries
-the distance units for that CRS. The function does not transform coordinates
-or discard Z/M dimensions. Geographic CRS, unknown or mismatched CRS, mixed
-matrix/spatial arguments, missing or non-finite coordinates, and unsupported
-or empty geometries are errors. Empty collections are supported.
+Spatial inputs to either operation must both be spatial (`sf` or `sfc`), have
+the same known projected CRS, and contain nonempty XY POINT geometries. Neither
+operation transforms coordinates or discards Z/M dimensions. Geographic CRS,
+unknown or mismatched CRS, mixed matrix/spatial arguments, missing or non-finite
+coordinates, and unsupported or empty geometries are errors. Empty collections
+are supported. `sfgpu_distance()` returns CRS distance units; the radius
+function returns indices, with a numeric radius interpreted in CRS units.
 
 ```r
 points <- sf::st_as_sf(
@@ -88,15 +90,16 @@ sfgpu_within_distance(points, dist = units::set_units(5, m))
 
 ## Memory limits
 
-`max_output_bytes` limits the dense result matrix payload and is inclusive.
-Its default is 1 GiB. It does not cap total R process memory. For example, a
-100,000 by 100,000 double matrix needs 80 GB for the result alone. Requests
-over the limit are rejected before result allocation or GPU startup.
+For `sfgpu_distance()`, `max_output_bytes` inclusively limits the dense result
+matrix payload. Its default is 1 GiB. It does not cap total R process memory.
+For example, a 100,000 by 100,000 double matrix needs 80 GB for the result
+alone. Requests over the limit are rejected before result allocation or GPU
+startup.
 
-`tile_bytes` is an inclusive execution budget for the two coordinate input
-tiles plus the distance output tile. Its default is 64 MiB; 40 bytes is the
-minimum budget for one pair. Smaller budgets create smaller tiles but do not
-make the returned matrix out-of-core.
+For `sfgpu_distance()`, `tile_bytes` is an inclusive execution budget for the
+two coordinate input tiles plus the distance output tile. Its default is 64
+MiB; 40 bytes is the minimum budget for one pair. Smaller budgets create
+smaller tiles but do not make the returned matrix out-of-core.
 
 `sfgpu_within_distance()` returns one sorted integer vector per row of `x`,
 containing the one-based indices in `y` at Euclidean distance less than or equal
@@ -118,29 +121,40 @@ scratch; 49 bytes is the minimum for one pair.
 sfgpu_distance(x, y, max_output_bytes = 1024, tile_bytes = 40)
 ```
 
-Results are binary64 doubles. CPU and CUDA use double-precision, robust
-hypot-style arithmetic. Metal uses exact scaled-integer coordinates, wide
-integer squared distances and an integer square root; it does not use native
-double arithmetic, which Metal lacks. Pairs that cannot be encoded exactly,
-lie near a rounding boundary, or fall outside the GPU result exponent range
-[-900, 900] are recomputed using CPU double-precision hypot. The fraction
-corrected depends on the coordinates and tile size and can reach 100%.
-`tools/validate-metal.R` reports accepted GPU and corrected CPU pair counts.
-Metal commands are capped at 65,536 pairs to bound command duration; no
-physical-Mac speedup has been established.
+For `sfgpu_distance()`, the result is a binary64 matrix. CPU and CUDA use
+double-precision, robust hypot-style arithmetic. Metal uses exact
+scaled-integer coordinates, wide integer squared distances and an integer
+square root; it does not use native double arithmetic, which Metal lacks.
+Pairs that cannot be encoded exactly, lie near a rounding boundary, or fall
+outside the GPU result exponent range [-900, 900] are recomputed using CPU
+double-precision hypot. The fraction corrected depends on the coordinates and
+tile size and can reach 100%. `tools/validate-metal.R` reports accepted GPU and
+corrected CPU pair counts. Metal commands are capped at 65,536 pairs to bound
+command duration; no physical-Mac speedup has been established.
 
-Comparisons
-are defined for the represented binary64 coordinates; precision already lost
-when coordinates were created cannot be recovered. Ordinary finite results
-are checked against an absolute bound of
+For `sfgpu_within_distance()`, every backend makes the final membership test
+with CPU double-precision `hypot(dx, dy) <= dist` on the represented binary64
+coordinates. CUDA and Metal generate candidates from conservative rectangular
+coordinate bounds; the host applies the final hypot test before returning each
+index. The CPU backend sorts and indexes the `y` points by x coordinate to
+prune candidates before applying the same test, with work proportional to the
+index build and the candidates examined. CUDA and Metal's tiled candidate
+scans can still inspect O(nrow(x) * nrow(y)) pairs, although they never
+construct the dense distance matrix. The two operations make no speed
+guarantee or automatic backend choice.
+
+Comparisons use the represented binary64 coordinates; precision already lost
+when coordinates were created cannot be recovered. For dense distances,
+ordinary finite results are checked against an absolute bound of
 `32 * .Machine$double.eps * pmax(1, abs(reference))`; very small nonzero values
 need relative checks.
 
 ## Scope
 
 This version does not implement geographic/geodesic distances, other geometry
-types, sparse or out-of-core results, or automatic backend selection. CUDA,
-Metal, and CPU-only portability are separate capabilities. The hosted macOS
+types, out-of-core results, or automatic backend selection. Radius matches are
+sparse, while `sfgpu_distance()` returns a dense matrix. CUDA, Metal, and CPU-only
+portability are separate capabilities. The hosted macOS
 Metal CI runner validates Metal compilation and correctness on its virtualized
 Apple device; it does not establish performance on a physical Mac. Performance
 has not been established by this README.

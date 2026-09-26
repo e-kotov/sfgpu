@@ -63,6 +63,16 @@ collection workspace. It is not a cap on total process memory. For spatial
 inputs, a numeric radius is interpreted in CRS units; a scalar \code{units}
 radius is converted to CRS units. For matrix inputs, a \code{units} radius is
 invalid.
+
+Membership is decided on the represented binary64 coordinates by the inclusive
+CPU double-precision predicate \code{hypot(dx, dy) <= dist}. CUDA and Metal
+generate candidates using conservative rectangular coordinate bounds, then the
+host applies that final predicate before returning indices. The CPU backend
+sorts and indexes the \code{y} points by x coordinate to prune candidates
+before applying the same predicate, with work proportional to the index build
+and candidates examined. CUDA and Metal candidate scans can still
+examine \code{nrow(x) * nrow(y)} pairs, though they do not create the dense
+distance matrix. No speed advantage is guaranteed.
 }
 \examples{
 x <- rbind(c(0, 0), c(3, 4))
