@@ -1,0 +1,8 @@
+src/Makevars
+src/Makevars.win
+src/*.o
+src/*.so
+src/*.dll
+src/*.cuo
+*.Rcheck/
+*.tar.gz

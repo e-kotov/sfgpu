@@ -1,0 +1,3 @@
+useDynLib(sfgpu, .registration = TRUE)
+export(sfgpu_distance)
+export(sfgpu_backends)

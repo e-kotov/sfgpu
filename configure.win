@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+for option in "$@"; do
+  case "$option" in
+    --enable-cuda) printf '%s\n' 'sfgpu: --enable-cuda is currently supported only on Unix builds' >&2 ; exit 1 ;;
+    --disable-cuda) ;;
+    *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
+  esac
+done
+rm -f src/*.o src/*.dll
+cat > src/Makevars.win <<'EOF'
+CXX_STD = CXX17
+OBJECTS = init.o distance.o
+EOF

@@ -1,0 +1,5 @@
+^LICENSE\.md$
+^src/Makevars$
+^src/Makevars\.win$
+^src/.*\.(o|so|dll|cuo)$
+^\.github$

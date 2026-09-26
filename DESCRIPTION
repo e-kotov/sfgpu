@@ -1,0 +1,13 @@
+Package: sfgpu
+Title: Explicit CPU and CUDA Distances for Projected Points
+Version: 0.1.0
+Authors@R: person("Egor", "Kotov", email = "kotov.egor@gmail.com", role = c("aut", "cre", "cph"))
+Description: Computes dense Euclidean distance matrices for Cartesian two-column
+    coordinates and projected 'sf' POINT geometries. A portable double-precision
+    CPU backend is always available; an optional CUDA backend must be requested
+    explicitly at build time and at each call.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Suggests: sf, units, testthat (>= 3.0.0)
+Config/testthat/edition: 3
+SystemRequirements: C++17; optional NVIDIA CUDA toolkit for --enable-cuda

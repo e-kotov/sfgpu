@@ -1,0 +1,93 @@
+#!/bin/sh
+set -eu
+
+enable_cuda=no
+for option in "$@"; do
+  case "$option" in
+    --enable-cuda) enable_cuda=yes ;;
+    --disable-cuda) enable_cuda=no ;;
+    --help) printf '%s\n' 'Optional: --enable-cuda (requires NVCC and CUDA runtime)' ; exit 0 ;;
+    *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
+  esac
+done
+
+# A source tree may have been installed previously in a different mode.
+rm -f src/*.o src/*.so src/*.cuo
+
+if [ "$enable_cuda" = no ]; then
+  cat > src/Makevars <<'EOF'
+CXX_STD = CXX17
+OBJECTS = init.o distance.o
+EOF
+  printf '%s\n' 'sfgpu: building portable CPU backend'
+  exit 0
+fi
+
+nvcc=${NVCC:-}
+if [ -z "$nvcc" ]; then
+  if [ -n "${CUDA_HOME:-}" ]; then nvcc="$CUDA_HOME/bin/nvcc"; else nvcc=nvcc; fi
+fi
+if ! command -v "$nvcc" >/dev/null 2>&1; then
+  printf '%s\n' 'sfgpu: --enable-cuda requested but NVCC was not found; set NVCC or CUDA_HOME' >&2
+  exit 1
+fi
+cuda_root=${CUDA_HOME:-}
+if [ -z "$cuda_root" ]; then
+  nvcc_resolved=$(command -v "$nvcc")
+  cuda_root=$(cd "$(dirname "$nvcc_resolved")/.." && pwd -P)
+fi
+cuda_inc=${CUDA_INC_DIR:-}
+if [ -z "$cuda_inc" ]; then
+  if [ -f "$cuda_root/include/cuda_runtime.h" ]; then cuda_inc="$cuda_root/include";
+  elif [ -f "$cuda_root/targets/x86_64-linux/include/cuda_runtime.h" ]; then cuda_inc="$cuda_root/targets/x86_64-linux/include";
+  else
+    printf '%s\n' "sfgpu: CUDA headers missing under CUDA_HOME=$cuda_root; set CUDA_INC_DIR" >&2
+    exit 1
+  fi
+fi
+if [ ! -f "$cuda_inc/cuda_runtime.h" ]; then
+  printf '%s\n' "sfgpu: CUDA headers missing in CUDA_INC_DIR=$cuda_inc" >&2
+  exit 1
+fi
+cuda_lib=${CUDA_LIB_DIR:-}
+if [ -z "$cuda_lib" ]; then
+  if [ -f "$cuda_root/lib64/libcudart.so" ]; then cuda_lib="$cuda_root/lib64";
+  elif [ -f "$cuda_root/lib/libcudart.so" ]; then cuda_lib="$cuda_root/lib";
+  elif [ -f "$cuda_root/targets/x86_64-linux/lib/libcudart.so" ]; then cuda_lib="$cuda_root/targets/x86_64-linux/lib";
+  else
+    printf '%s\n' "sfgpu: CUDA runtime library missing under CUDA_HOME=$cuda_root; set CUDA_LIB_DIR" >&2
+    exit 1
+  fi
+fi
+if [ ! -f "$cuda_lib/libcudart.so" ] && [ ! -f "$cuda_lib/libcudart.dylib" ]; then
+  printf '%s\n' "sfgpu: CUDA runtime library missing under $cuda_lib" >&2
+  exit 1
+fi
+
+arch_flags=${CUDA_ARCH_FLAGS:--gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_80,code=compute_80}
+probe_dir=$(mktemp -d "${TMPDIR:-/tmp}/sfgpu-cuda.XXXXXX")
+trap 'rm -rf "$probe_dir"' EXIT HUP INT TERM
+cat > "$probe_dir/probe.cu" <<'EOF'
+#include <cuda_runtime.h>
+__global__ void probe(double* x) { x[0] = 1.0; }
+int main() { double* x = nullptr; return cudaMalloc(&x, sizeof(double)); }
+EOF
+if ! "$nvcc" -std=c++17 $arch_flags "$probe_dir/probe.cu" -o "$probe_dir/probe" \
+    -I"$cuda_inc" -L"$cuda_lib" -lcudart > "$probe_dir/build.log" 2>&1; then
+  cat "$probe_dir/build.log" >&2
+  printf '%s\n' 'sfgpu: requested CUDA compiler/link check failed' >&2
+  exit 1
+fi
+
+cat > src/Makevars <<EOF
+CXX_STD = CXX17
+PKG_CPPFLAGS = -DSFGPU_WITH_CUDA
+PKG_LIBS = -L"$cuda_lib" -Wl,-rpath,"$cuda_lib" -lcudart
+OBJECTS = init.o distance.o cuda_distance.o
+NVCC = "$nvcc"
+CUDA_ARCH_FLAGS = $arch_flags
+all: \$(SHLIB)
+cuda_distance.o: cuda_distance.cu cuda_distance.h
+	\$(NVCC) -std=c++17 -Xcompiler=-fPIC --fmad=false --prec-div=true --prec-sqrt=true \$(CUDA_ARCH_FLAGS) -I"$cuda_inc" -c cuda_distance.cu -o cuda_distance.o
+EOF
+printf '%s\n' "sfgpu: building CUDA backend with $nvcc ($arch_flags)"
