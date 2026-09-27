@@ -1,11 +1,12 @@
 #!/bin/sh
 set -eu
-for option in "$@"; do
-  case "$option" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --enable-cuda) printf '%s\n' 'sfgpu: on Windows, CUDA acceleration is enabled dynamically via sfgpu::sfgpu_install_cuda()' ;;
     --disable-cuda) ;;
-    *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
+    *) ;;
   esac
+  shift
 done
 rm -f src/*.o src/*.dll
 rm -f src/*.mm

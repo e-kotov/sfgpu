@@ -3,18 +3,37 @@ set -eu
 
 enable_cuda=no
 enable_metal=no
-for option in "$@"; do
-  case "$option" in
+is_cross=no
+
+while [ $# -gt 0 ]; do
+  case "$1" in
     --enable-cuda) enable_cuda=yes ;;
     --disable-cuda) enable_cuda=no ;;
     --enable-metal) enable_metal=yes ;;
     --disable-metal) enable_metal=no ;;
+    --host=*)
+      host_val="${1#*=}"
+      case "$host_val" in
+        *darwin*|*apple*) ;;
+        *) is_cross=yes ;;
+      esac
+      ;;
+    --host)
+      shift
+      if [ $# -gt 0 ]; then
+        case "$1" in
+          *darwin*|*apple*) ;;
+          *) is_cross=yes ;;
+        esac
+      fi
+      ;;
     --help) printf '%s\n' 'Optional: --enable-cuda (NVCC); --enable-metal (macOS Metal.framework)' ; exit 0 ;;
-    *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
+    *) ;;
   esac
+  shift
 done
 
-if [ "$enable_metal" = no ] && [ "$enable_cuda" = no ]; then
+if [ "$enable_metal" = no ] && [ "$enable_cuda" = no ] && [ "$is_cross" = no ]; then
   if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
     printf '%s\n' 'sfgpu: auto-enabling Metal for Apple Silicon macOS'
     enable_metal=yes
