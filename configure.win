@@ -8,6 +8,7 @@ for option in "$@"; do
   esac
 done
 rm -f src/*.o src/*.dll
+rm -f src/*.mm
 cat > src/Makevars.win <<'EOF'
 CXX_STD = CXX17
 OBJECTS = init.o distance.o radius.o
