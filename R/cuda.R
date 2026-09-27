@@ -96,13 +96,5 @@ cuda_ensure <- function() {
 }
 
 .sha256_file <- function(file) {
-  if (exists("sha256sum", asNamespace("tools"))) {
-    unname(tools::sha256sum(file))
-  } else if (requireNamespace("openssl", quietly = TRUE)) {
-    as.character(openssl::sha256(file(file, "rb")))
-  } else if (requireNamespace("digest", quietly = TRUE)) {
-    digest::digest(file, algo = "sha256", file = TRUE)
-  } else {
-    stop("Neither tools::sha256sum(), 'openssl', nor 'digest' package is available for SHA-256 verification.", call. = FALSE)
-  }
+  unname(tools::sha256sum(file))
 }

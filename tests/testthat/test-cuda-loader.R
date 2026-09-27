@@ -15,9 +15,12 @@ test_that("cuda_manifest returns expected fields", {
 })
 
 test_that("cuda_dll_path respects SFGPU_CUDA_DLL", {
-  withr::with_envvar(c(SFGPU_CUDA_DLL = "C:/test/custom_sfgpu_cuda.dll"), {
-    expect_identical(sfgpu:::cuda_dll_path(), "C:/test/custom_sfgpu_cuda.dll")
-  })
+  old <- Sys.getenv("SFGPU_CUDA_DLL", unset = NA)
+  on.exit({
+    if (is.na(old)) Sys.unsetenv("SFGPU_CUDA_DLL") else Sys.setenv(SFGPU_CUDA_DLL = old)
+  }, add = TRUE)
+  Sys.setenv(SFGPU_CUDA_DLL = "C:/test/custom_sfgpu_cuda.dll")
+  expect_identical(sfgpu:::cuda_dll_path(), "C:/test/custom_sfgpu_cuda.dll")
 })
 
 test_that(".sha256_file calculates consistent hash", {
