@@ -10,7 +10,7 @@
 #'   spatial inputs. The dimensions are `nrow(x)` by `nrow(y)`.
 #' @export
 sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
-                           max_output_bytes = 1024^3,
+                           max_output_bytes = 2^53,
                            tile_bytes = 64 * 1024^2) {
   backend <- match.arg(backend)
   max_output_bytes <- .sfgpu_bytes(max_output_bytes, "max_output_bytes", 1)
