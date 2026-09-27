@@ -22,7 +22,7 @@ sfgpu_distance(
   the package was built without that backend or no device is available; it
   never falls back to CPU.}
   \item{max_output_bytes}{Inclusive cap on the dense double result payload in
-  bytes. The default is 2^53 (unrestricted). This does not cap total process memory.}
+  bytes. The default is \code{2^53} (unrestricted). This does not cap total process memory.}
   \item{tile_bytes}{Inclusive byte budget for both coordinate input tiles and
   the output tile. The default is 64 MiB; at least 40 bytes are needed for one
   pair.}

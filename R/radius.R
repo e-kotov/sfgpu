@@ -9,7 +9,7 @@
 #'   must be explicitly selected and error when unavailable.
 #' @param max_output_bytes Inclusive cap on the output accounting: eight bytes
 #'   per `x` list slot plus four bytes per returned `y` index. R object headers
-#'   and temporary collection workspace are excluded. The default is 2^53 (unrestricted).
+#'   and temporary collection workspace are excluded. The default is \code{2^53} (unrestricted).
 #' @param tile_bytes Inclusive GPU execution-tile budget, including inputs,
 #'   output, and scratch. The default is 64 MiB; 49 bytes is the minimum for one
 #'   candidate pair.
