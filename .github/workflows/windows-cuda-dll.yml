@@ -46,7 +46,6 @@ jobs:
 
           nvcc -O3 -std=c++17 --shared -cudart static `
             -Xcompiler "/MT /EHsc /O2" `
-            -DSFGPU_BUILD_ID="\"$env:GITHUB_SHA cuda12\"" `
             -gencode arch=compute_70,code=sm_70 `
             -gencode arch=compute_75,code=sm_75 `
             -gencode arch=compute_80,code=sm_80 `

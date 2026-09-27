@@ -7,7 +7,7 @@
 #include <string>
 
 #ifndef SFGPU_BUILD_ID
-#define SFGPU_BUILD_ID "unknown"
+#define SFGPU_BUILD_ID "cuda12-abi1"
 #endif
 
 #ifdef _WIN32
