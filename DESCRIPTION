@@ -13,3 +13,4 @@ Suggests: sf, units, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 SystemRequirements: C++17; optional NVIDIA CUDA toolkit for --enable-cuda;
     Apple Metal SDK for --enable-metal
+RoxygenNote: 7.3.3

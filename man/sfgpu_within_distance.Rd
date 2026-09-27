@@ -7,7 +7,7 @@ sfgpu_within_distance(
   y = x,
   dist,
   backend = c("cpu", "cuda", "metal"),
-  max_output_bytes = 1024^3,
+  max_output_bytes = 2^53,
   tile_bytes = 64 * 1024^2
 )
 }
@@ -27,7 +27,7 @@ sfgpu_within_distance(
   to CPU.}
   \item{max_output_bytes}{Inclusive cap on the output accounting: eight bytes
   per \code{x} list slot plus four bytes per returned index. R object headers
-  and temporary collection workspace are excluded. The default is 1 GiB.}
+  and temporary collection workspace are excluded. The default is 2^53 (unrestricted).}
   \item{tile_bytes}{Inclusive budget for the GPU execution tile, including
   inputs, output, and scratch. The default is 64 MiB; at least 49 bytes are
   needed for one candidate pair.}
