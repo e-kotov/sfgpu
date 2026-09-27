@@ -52,7 +52,7 @@ EOF
 CXX_STD = CXX17
 PKG_CPPFLAGS = -DSFGPU_WITH_METAL
 PKG_LIBS = -framework Metal -framework Foundation
-OBJECTS = init.o distance.o radius.o metal_distance.o metal_radius.o
+OBJECTS = init.o distance.o radius.o cuda_loader.o metal_distance.o metal_radius.o
 all: $(SHLIB)
 metal_distance.o: metal_distance.mm metal_distance.h metal_kernel.h
 	$(CXX17) $(CXX17STD) $(CXX17FLAGS) $(CXX17PICFLAGS) $(CPPFLAGS) $(PKG_CPPFLAGS) -fobjc-arc -c metal_distance.mm -o metal_distance.o
@@ -66,7 +66,7 @@ fi
 if [ "$enable_cuda" = no ]; then
   cat > src/Makevars <<'EOF'
 CXX_STD = CXX17
-OBJECTS = init.o distance.o radius.o
+OBJECTS = init.o distance.o radius.o cuda_loader.o
 EOF
   printf '%s\n' 'sfgpu: building portable CPU backend'
   exit 0
@@ -132,7 +132,7 @@ cat > src/Makevars <<EOF
 CXX_STD = CXX17
 PKG_CPPFLAGS = -DSFGPU_WITH_CUDA
 PKG_LIBS = -L"$cuda_lib" -Wl,-rpath,"$cuda_lib" -lcudart
-OBJECTS = init.o distance.o radius.o cuda_distance.o cuda_radius.o
+OBJECTS = init.o distance.o radius.o cuda_loader.o cuda_distance.o cuda_radius.o
 NVCC = "$nvcc"
 CUDA_ARCH_FLAGS = $arch_flags
 all: \$(SHLIB)

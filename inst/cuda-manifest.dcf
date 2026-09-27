@@ -1,0 +1,5 @@
+abi: 1
+url: https://github.com/e-kotov/sfgpu/releases/download/cuda-abi-1/sfgpu_cuda-abi1-win-x64-cuda12.dll
+sha256: 0000000000000000000000000000000000000000000000000000000000000000
+cuda: 12.0
+min_driver: 525.60.13

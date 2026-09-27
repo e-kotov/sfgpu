@@ -2,7 +2,7 @@
 set -eu
 for option in "$@"; do
   case "$option" in
-    --enable-cuda) printf '%s\n' 'sfgpu: --enable-cuda is currently supported only on Unix builds' >&2 ; exit 1 ;;
+    --enable-cuda) printf '%s\n' 'sfgpu: on Windows, CUDA acceleration is enabled dynamically via sfgpu::sfgpu_install_cuda()' ;;
     --disable-cuda) ;;
     *) printf '%s\n' "Unknown configure option: $option" >&2 ; exit 1 ;;
   esac
@@ -11,5 +11,6 @@ rm -f src/*.o src/*.dll
 rm -f src/*.mm
 cat > src/Makevars.win <<'EOF'
 CXX_STD = CXX17
-OBJECTS = init.o distance.o radius.o
+PKG_CPPFLAGS = -DSFGPU_CUDA_DYNAMIC
+OBJECTS = init.o distance.o radius.o cuda_loader.o
 EOF

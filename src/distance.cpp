@@ -14,7 +14,11 @@
 #ifdef SFGPU_WITH_CUDA
 #include "cuda_distance.h"
 #endif
+#include "sfgpu_cuda_api.h"
 #include "metal_distance.h"
+
+extern const sfgpu_cuda_api* g_cuda;
+extern std::string g_cuda_load_error;
 
 namespace {
 
@@ -78,9 +82,13 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
       tile_value > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
     Rf_error("native tile_bytes must be a whole number from 40 to 2^53");
   }
-#ifndef SFGPU_WITH_CUDA
+#if !defined(SFGPU_WITH_CUDA) && !defined(SFGPU_CUDA_DYNAMIC)
   if (use_cuda) {
     Rf_error("CUDA support is not compiled; reinstall with --enable-cuda");
+  }
+#elif defined(SFGPU_CUDA_DYNAMIC)
+  if (use_cuda && !g_cuda) {
+    Rf_error("%s", g_cuda_load_error.c_str());
   }
 #endif
 #ifndef SFGPU_WITH_METAL
@@ -106,6 +114,21 @@ extern "C" SEXP C_sfgpu_distance(SEXP x, SEXP y, SEXP backend, SEXP tile) {
                             REAL(y), static_cast<std::size_t>(ny), REAL(out),
                             static_cast<std::size_t>(tile_value),
                             interrupt_ok);
+#elif defined(SFGPU_CUDA_DYNAMIC)
+        if (!g_cuda) {
+          throw std::runtime_error(g_cuda_load_error);
+        }
+        char cuda_err[1024] = {0};
+        auto intr_fn = []() -> int { return interrupt_ok() ? 1 : 0; };
+        int rc = g_cuda->distance(REAL(x), static_cast<uint64_t>(nx),
+                                  REAL(y), static_cast<uint64_t>(ny), REAL(out),
+                                  static_cast<uint64_t>(tile_value),
+                                  intr_fn, cuda_err, sizeof(cuda_err));
+        if (rc == SFGPU_CUDA_INTERRUPTED) {
+          throw std::runtime_error("distance computation interrupted");
+        } else if (rc != SFGPU_CUDA_OK) {
+          throw std::runtime_error(cuda_err[0] ? cuda_err : "CUDA distance computation failed");
+        }
 #endif
       } else if (use_metal) {
 #ifdef SFGPU_WITH_METAL
@@ -183,7 +206,7 @@ extern "C" SEXP C_sfgpu_cuda_info() {
   bool available = false;
   char device_text[256] = {0};
   char reason_text[1024] = {0};
-#ifdef SFGPU_WITH_CUDA
+#if defined(SFGPU_WITH_CUDA)
   compiled = true;
   {
     try {
@@ -194,6 +217,20 @@ extern "C" SEXP C_sfgpu_cuda_info() {
       std::snprintf(reason_text, sizeof(reason_text), "%s", reason.c_str());
     } catch (const std::exception& e) {
       std::snprintf(reason_text, sizeof(reason_text), "%s", e.what());
+    }
+  }
+#elif defined(SFGPU_CUDA_DYNAMIC)
+  compiled = true;
+  if (!g_cuda) {
+    available = false;
+    std::snprintf(reason_text, sizeof(reason_text), "%s", g_cuda_load_error.c_str());
+  } else {
+    try {
+      available = (g_cuda->info(device_text, sizeof(device_text),
+                                reason_text, sizeof(reason_text)) != 0);
+    } catch (...) {
+      available = false;
+      std::snprintf(reason_text, sizeof(reason_text), "%s", "unknown error querying CUDA device");
     }
   }
 #else

@@ -10,6 +10,8 @@ extern "C" SEXP C_sfgpu_metal_radius_stats();
 extern "C" SEXP C_sfgpu_cuda_info();
 extern "C" SEXP C_sfgpu_metal_info();
 extern "C" SEXP C_sfgpu_metal_stats();
+extern "C" SEXP C_sfgpu_cuda_loaded();
+extern "C" SEXP C_sfgpu_cuda_load(SEXP);
 
 static const R_CallMethodDef call_methods[] = {
     {"C_sfgpu_distance", reinterpret_cast<DL_FUNC>(&C_sfgpu_distance), 4},
@@ -20,6 +22,8 @@ static const R_CallMethodDef call_methods[] = {
     {"C_sfgpu_cuda_info", reinterpret_cast<DL_FUNC>(&C_sfgpu_cuda_info), 0},
     {"C_sfgpu_metal_info", reinterpret_cast<DL_FUNC>(&C_sfgpu_metal_info), 0},
     {"C_sfgpu_metal_stats", reinterpret_cast<DL_FUNC>(&C_sfgpu_metal_stats), 0},
+    {"C_sfgpu_cuda_loaded", reinterpret_cast<DL_FUNC>(&C_sfgpu_cuda_loaded), 0},
+    {"C_sfgpu_cuda_load", reinterpret_cast<DL_FUNC>(&C_sfgpu_cuda_load), 1},
     {nullptr, nullptr, 0}};
 
 extern "C" void R_init_sfgpu(DllInfo* dll) {

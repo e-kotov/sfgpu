@@ -27,6 +27,7 @@ sfgpu_within_distance <- function(x, y = x, dist,
   tile_bytes <- .sfgpu_bytes(tile_bytes, "tile_bytes", 49)
   inputs <- .sfgpu_prepare_inputs(x, y)
   radius <- .sfgpu_radius(dist, inputs)
+  if (backend == "cuda") cuda_ensure()
   .Call(C_sfgpu_within_distance, inputs$x_mat, inputs$y_mat, backend,
         radius, max_output_bytes, tile_bytes)
 }

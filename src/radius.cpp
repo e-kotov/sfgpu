@@ -5,7 +5,12 @@
 
 #include "radius.h"
 #include "cuda_radius.h"
+#include "sfgpu_cuda_api.h"
 #include "metal_radius.h"
+#include <string>
+
+extern const sfgpu_cuda_api* g_cuda;
+extern std::string g_cuda_load_error;
 
 #include <algorithm>
 #include <cmath>
@@ -41,6 +46,7 @@ struct Collector {
   std::size_t max_hits;
   std::size_t hits = 0;
   std::size_t candidates = 0;
+  std::string error;
   std::vector<std::vector<int>> rows;
 
   Collector(const double* x_, const double* y_, std::size_t nx_,
@@ -63,6 +69,20 @@ struct Collector {
 
   static void emit(std::size_t i, std::size_t j, void* state) {
     static_cast<Collector*>(state)->accept(i, j);
+  }
+
+  static int emit_c(uint64_t i, uint64_t j, void* state) {
+    auto* c = static_cast<Collector*>(state);
+    try {
+      c->accept(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+      return 0;
+    } catch (const std::exception& e) {
+      c->error = e.what();
+      return 1;
+    } catch (...) {
+      c->error = "radius collector failed";
+      return 1;
+    }
   }
 };
 
@@ -159,8 +179,10 @@ extern "C" SEXP C_sfgpu_within_distance(SEXP x, SEXP y, SEXP backend,
   if (!use_cuda && !use_metal && std::strcmp(backend_name, "cpu") != 0) {
     Rf_error("unknown radius backend");
   }
-#ifndef SFGPU_WITH_CUDA
+#if !defined(SFGPU_WITH_CUDA) && !defined(SFGPU_CUDA_DYNAMIC)
   if (use_cuda) Rf_error("CUDA support is not compiled; reinstall with --enable-cuda");
+#elif defined(SFGPU_CUDA_DYNAMIC)
+  if (use_cuda && !g_cuda) Rf_error("%s", g_cuda_load_error.c_str());
 #endif
 #ifndef SFGPU_WITH_METAL
   if (use_metal) Rf_error("Metal support is not compiled; reinstall with --enable-metal");
@@ -185,6 +207,25 @@ extern "C" SEXP C_sfgpu_within_distance(SEXP x, SEXP y, SEXP backend,
         sfgpu_cuda_radius(REAL(x), nx, REAL(y), ny, radius_value,
                           static_cast<std::size_t>(tile_value),
                           Collector::emit, &collector, interrupt_ok);
+#elif defined(SFGPU_CUDA_DYNAMIC)
+        if (!g_cuda) {
+          throw std::runtime_error(g_cuda_load_error);
+        }
+        char cuda_err[1024] = {0};
+        auto intr_fn = []() -> int { return interrupt_ok() ? 1 : 0; };
+        int rc = g_cuda->radius(REAL(x), static_cast<uint64_t>(nx),
+                                REAL(y), static_cast<uint64_t>(ny), radius_value,
+                                static_cast<uint64_t>(tile_value),
+                                Collector::emit_c, &collector, intr_fn,
+                                cuda_err, sizeof(cuda_err));
+        if (rc == SFGPU_CUDA_CALLBACK_FAILED) {
+          if (!collector.error.empty()) throw std::runtime_error(collector.error);
+          throw std::runtime_error("radius callback failed");
+        } else if (rc == SFGPU_CUDA_INTERRUPTED) {
+          throw std::runtime_error("radius computation interrupted");
+        } else if (rc != SFGPU_CUDA_OK) {
+          throw std::runtime_error(cuda_err[0] ? cuda_err : "CUDA radius computation failed");
+        }
 #endif
       } else if (use_metal) {
 #ifdef SFGPU_WITH_METAL
@@ -237,8 +278,12 @@ extern "C" SEXP C_sfgpu_cuda_radius_stats() {
   SEXP out = PROTECT(Rf_allocVector(VECSXP, 2));
   SEXP names = PROTECT(Rf_allocVector(STRSXP, 2));
   SfgpuCudaRadiusStats stats;
-#ifdef SFGPU_WITH_CUDA
+#if defined(SFGPU_WITH_CUDA)
   stats = sfgpu_cuda_radius_stats();
+#elif defined(SFGPU_CUDA_DYNAMIC)
+  if (g_cuda) {
+    g_cuda->radius_stats(&stats.indexed_waves, &stats.tiled_tiles);
+  }
 #endif
   SET_VECTOR_ELT(out, 0, Rf_ScalarReal(stats.indexed_waves));
   SET_VECTOR_ELT(out, 1, Rf_ScalarReal(stats.tiled_tiles));

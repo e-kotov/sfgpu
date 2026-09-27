@@ -34,6 +34,7 @@ sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
 
   # This call allocates the result once, then fills it directly in column-major
   # order. GPU backends are not initialized until after the payload check above.
+  if (backend == "cuda") cuda_ensure()
   out <- .Call(C_sfgpu_distance, x_mat, y_mat, backend, tile_bytes)
   if (inputs$spatial) {
     units::set_units(out, base::units(inputs$x_crs$ud_unit), mode = "standard")
@@ -89,6 +90,7 @@ sfgpu_distance <- function(x, y = x, backend = c("cpu", "cuda", "metal"),
 #'   scalars. Inapplicable strings are `NA_character_`.
 #' @export
 sfgpu_backends <- function() {
+  cuda_ensure()
   cuda <- .Call(C_sfgpu_cuda_info)
   metal <- .Call(C_sfgpu_metal_info)
   list(

@@ -23,13 +23,23 @@ The default build is CPU-only and does not require a GPU toolchain:
 R CMD INSTALL .
 ```
 
-CUDA support is opt-in. Build with a working NVIDIA CUDA compiler and toolkit:
+CUDA support is opt-in. Build with a working NVIDIA CUDA compiler and toolkit on Linux:
 
 ```sh
 R CMD INSTALL --configure-args=--enable-cuda .
 ```
 
-Apple Metal support is opt-in and requires Apple's Metal SDK and compiler:
+On Windows, standard R builds (such as R-universe) are CPU-only because Rtools uses MinGW GCC.
+Windows users with an NVIDIA GPU can enable CUDA acceleration by running:
+
+```r
+library(sfgpu)
+sfgpu_install_cuda()
+```
+
+This downloads and loads the pre-compiled, verified CUDA companion DLL into the user's data directory.
+
+Apple Metal support is opt-in (and automatically enabled on Apple Silicon macOS):
 
 ```sh
 R CMD INSTALL --configure-args=--enable-metal .

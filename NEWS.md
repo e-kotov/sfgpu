@@ -1,5 +1,7 @@
 # sfgpu 0.1.0
 
+- Add Windows CUDA support via pre-compiled companion DLL loaded dynamically
+  through `sfgpu::sfgpu_install_cuda()`.
 - Add `sfgpu_within_distance()` for bounded-memory, sparse point matches within
   an inclusive Euclidean radius on CPU and available CUDA or Metal backends.
 - Accept coordinate-unit numeric radii for matrices and spatial inputs, plus

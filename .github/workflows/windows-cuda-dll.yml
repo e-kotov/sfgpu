@@ -1,0 +1,97 @@
+name: Build Windows CUDA Companion DLL
+
+on:
+  push:
+    tags:
+      - 'cuda-abi-*'
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      abi_version:
+        description: 'ABI version number (e.g. 1)'
+        required: true
+        default: '1'
+      cuda_version:
+        description: 'CUDA version to install'
+        required: true
+        default: '12.4.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build-dll:
+    name: Build sfgpu_cuda.dll (Windows MSVC + CUDA)
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.21
+        with:
+          cuda: ${{ github.event.inputs.cuda_version || '12.4.1' }}
+          method: network
+          sub-packages: '["nvcc", "cudart", "visual_studio_integration"]'
+
+      - name: Compile sfgpu_cuda companion DLL
+        shell: pwsh
+        run: |
+          $abi = "${{ github.event.inputs.abi_version || '1' }}"
+          $dll_name = "sfgpu_cuda-abi${abi}-win-x64-cuda12.dll"
+          Write-Host "Building $dll_name ..."
+
+          nvcc -O3 -std=c++17 --shared -cudart static `
+            -Xcompiler "/MT /EHsc /O2" `
+            -DSFGPU_BUILD_ID="\"$env:GITHUB_SHA cuda12\"" `
+            -gencode arch=compute_70,code=sm_70 `
+            -gencode arch=compute_75,code=sm_75 `
+            -gencode arch=compute_80,code=sm_80 `
+            -gencode arch=compute_86,code=sm_86 `
+            -gencode arch=compute_89,code=sm_89 `
+            -gencode arch=compute_90,code=sm_90 `
+            -gencode arch=compute_90,code=compute_90 `
+            -Isrc `
+            -o $dll_name `
+            src/cuda_api.cu src/cuda_distance.cu src/cuda_radius.cu
+
+          if (-not (Test-Path $dll_name)) {
+            throw "Compilation failed: $dll_name was not produced"
+          }
+
+          Write-Host "Inspecting dependencies..."
+          $deps = dumpbin /dependents $dll_name | Out-String
+          Write-Host $deps
+          if ($deps -match 'cudart64|VCRUNTIME|MSVCP') {
+            throw "Unacceptable dynamic dependency found in DLL: $deps"
+          }
+
+          Write-Host "Verifying exported entrypoint..."
+          $exports = dumpbin /exports $dll_name | Out-String
+          Write-Host $exports
+          if ($exports -notmatch 'sfgpu_cuda_get_api') {
+            throw "Required entrypoint 'sfgpu_cuda_get_api' is missing from exports!"
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $dll_name).Hash.ToLower()
+          "$hash *$dll_name" | Out-File -Encoding ascii "$dll_name.sha256"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload DLL as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sfgpu-windows-cuda-dll
+          path: |
+            sfgpu_cuda-abi*.dll
+            sfgpu_cuda-abi*.dll.sha256
+
+      - name: Release assets (if tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sfgpu_cuda-abi*.dll
+            sfgpu_cuda-abi*.dll.sha256
